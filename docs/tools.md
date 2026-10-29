@@ -149,6 +149,8 @@ subagent({
 | `tools` | string | no | Comma-separated tools (overrides agent default) |
 | `cwd` | string | no | Working directory for the sub-agent. Without worktree, the agent starts in this folder. With worktree, this selects the source Git repository and the agent starts at the created worktree root. |
 | `worktree` | object \| null | no | Optional isolated Herdr-managed Git worktree. Omit or pass null to use an ordinary pane in cwd. |
+| `worktree.branch` | string | yes | New branch name for an isolated Herdr-managed Git worktree |
+| `worktree.base` | string | no | Git revision to branch from. Defaults to the source checkout's committed HEAD. |
 | `fork` | boolean | no | Override the child session mode for this spawn. `true` forces full-context fork; `false` forces standalone. Omit to inherit the agent frontmatter session-mode. |
 | `persistent` | boolean | no | Keep this stable specialist session alive between turn-based tasks. Persistent agents accept follow-up work only through subagent_send. |
 | `interactive` | boolean | no | Mark the subagent as interactive (long-running, user drives the conversation in its own pane). When true, the main session is not woken by status transitions (stalled/recovered) for this subagent. If omitted, falls back to the agent's `interactive` frontmatter, otherwise the inverse of `auto-exit` (agents that auto-exit are autonomous and get stall pings; agents that don't are interactive and stay quiet). |
@@ -426,9 +428,22 @@ Registered in: parent sessions.
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
 | `tasks` | object | yes | — |
+| `tasks.coding` | string[] | no | Implementation workers |
+| `tasks.review` | string[] | no | Code reviewers |
+| `tasks.recon` | string[] | no | Reconnaissance scouts |
+| `tasks.qa` | string[] | no | Software and test runners |
+| `tasks.architecture` | string[] | no | Planning and diagnosis |
+| `tasks.docs` | string[] | no | Documentation workers |
 | `tasksMeta` | object | yes | — |
+| `tasksMeta.generatedAt` | string | yes | — |
+| `tasksMeta.method` | `"research"` \| `"registry-only"` | yes | — |
 | `expectedConfigRevision` | `"missing"` \| string | no | Revision of the config the proposal was read from: "sha256:" plus 64 lowercase hex digits of the exact file bytes, or "missing" when the file is absent. A mismatch fails without writing; re-read, re-propose, and re-approve. Omit for an unconditional write. |
 | `basis` | object \| object | no | What the ranking rests on, as submitted by the proposer and not independently verified: {"kind":"registry-only"}, or {"kind":"research"} with the http(s) sources consulted in this run, how each informed the ranking, and the remaining uncertainty. kind must equal tasksMeta.method. Not saved. Omit for a legacy write. |
+| `basis.kind` | `"registry-only"` \| `"research"` | yes | — |
+| `basis.sources` | object[] | no | — |
+| `basis.sources[].url` | string | yes | — |
+| `basis.sources[].influence` | string | yes | — |
+| `basis.uncertainty` | string | no | — |
 
 ### `worktree_list`
 

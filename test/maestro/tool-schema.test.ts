@@ -335,6 +335,32 @@ describe("generated tool docs", () => {
 		}
 	});
 
+	it("lists nested object fields, including those inside anyOf and array items", () => {
+		const output = docs();
+		const row = (path: string) =>
+			output.split("\n").find((line) => line.startsWith(`| \`${path}\` |`));
+		assert.match(
+			row("worktree.branch") ?? "",
+			/^\| `worktree\.branch` \| string \| yes \| New branch name/,
+		);
+		assert.match(
+			row("worktree.base") ?? "",
+			/^\| `worktree\.base` \| string \| no \| Git revision/,
+		);
+		for (const path of [
+			"tasks.coding",
+			"tasksMeta.method",
+			"basis.kind",
+			"basis.sources",
+			"basis.sources[].url",
+		])
+			assert.ok(row(path), path);
+		assert.match(
+			row("basis.kind") ?? "",
+			/`"registry-only"` \\\| `"research"` \| yes/,
+		);
+	});
+
 	it("lists every registered command with its usage", () => {
 		const snapshot = fixture("current");
 		const output = docs();

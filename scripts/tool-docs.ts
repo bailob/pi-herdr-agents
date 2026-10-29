@@ -41,23 +41,63 @@ function describeType(node: JsonValue | undefined): string {
 	return isString(node.type) ? node.type : "unknown";
 }
 
-function parameterRows(tool: CapturedTool): string[][] {
-	const schema: JsonObject = isRecord(tool.parameters) ? tool.parameters : {};
-	const properties = isRecord(schema.properties) ? schema.properties : {};
-	const required = new Set(
-		Array.isArray(schema.required) ? schema.required.filter(isString) : [],
-	);
-	return Object.entries(properties).map(([name, node]) => {
+/** The non-union alternatives of `node`, with `anyOf` flattened. */
+function alternatives(node: JsonValue | undefined): JsonObject[] {
+	if (!isRecord(node)) return [];
+	return Array.isArray(node.anyOf) ? node.anyOf.flatMap(alternatives) : [node];
+}
+
+const propertiesOf = (node: JsonObject): JsonObject =>
+	isRecord(node.properties) ? node.properties : {};
+
+const requiredOf = (node: JsonObject) =>
+	new Set(Array.isArray(node.required) ? node.required.filter(isString) : []);
+
+/**
+ * One row per field of the object alternatives of `nodes`, followed by the
+ * rows of its nested object and array-item fields. A field is required only
+ * when every object alternative requires it.
+ */
+function fieldRows(nodes: JsonValue[], prefix: string): string[][] {
+	const variants = nodes
+		.flatMap(alternatives)
+		.filter((node) => isRecord(node.properties));
+	const names = [
+		...new Set(variants.flatMap((node) => Object.keys(propertiesOf(node)))),
+	];
+	return names.flatMap((name) => {
+		const children = variants.flatMap((node) => {
+			const child = propertiesOf(node)[name];
+			return child === undefined ? [] : [child];
+		});
 		const description =
-			isRecord(node) && isString(node.description) ? node.description : "";
+			children
+				.map((child) =>
+					isRecord(child) && isString(child.description)
+						? child.description
+						: "",
+				)
+				.find(Boolean) ?? "";
+		const path = prefix ? `${prefix}.${name}` : name;
+		const items = children
+			.flatMap(alternatives)
+			.flatMap((node) =>
+				node.type === "array" && node.items !== undefined ? [node.items] : [],
+			);
 		return [
-			`\`${name}\``,
-			describeType(node),
-			required.has(name) ? "yes" : "no",
-			description ? cell(description) : "—",
+			[
+				`\`${path}\``,
+				[...new Set(children.map(describeType))].join(" \\| "),
+				variants.every((node) => requiredOf(node).has(name)) ? "yes" : "no",
+				description ? cell(description) : "—",
+			],
+			...fieldRows(children, path),
+			...fieldRows(items, `${path}[]`),
 		];
 	});
 }
+
+const parameterRows = (tool: CapturedTool) => fieldRows([tool.parameters], "");
 
 function parameterTable(tool: CapturedTool): string {
 	const rows = parameterRows(tool);
