@@ -235,7 +235,6 @@ changes. Without a real file, only non-model settings fall back to the example.
 | Key | Purpose |
 | --- | --- |
 | `status.enabled` | Widget status |
-| `sidebar.enabled` | Opt-in delegated-child markers for the optional Herdr sidebar plugin; off by default |
 | `models.default` | Model for children that specify none |
 | `models.agents` | Per-role model, keyed by role name |
 | `models.tasks` | Ordered exact-ID candidates per category for `task:<category>` |
@@ -272,11 +271,13 @@ For installation or troubleshooting, first read the
 this skill's directory, not the user's working directory. It is the canonical
 reference for requirements, installation, Focus/All, limits, and uninstall.
 
-Setup has two separate parts: **install the Herdr plugin** and **enable markers
-in the Pi extension**. Neither alone enables sidebar filtering.
+The extension always marks delegated children inside Herdr; there is no
+setting. Installing the Pi package does not install the Herdr plugin, and the
+plugin alone hides nothing.
 
-1. Check the installed extension supports `sidebar.enabled`, and check the
-   guide's Herdr compatibility requirements. Markers work on Linux and macOS
+1. Check the installed extension is newer than `3.3.1` (older releases mark
+   children only with `"sidebar": { "enabled": true }` in `config.json`), and
+   check the guide's Herdr compatibility requirements. Markers work on Linux and macOS
    and need Herdr's Pi integration (`herdr integration install pi`) in the
    agent directory children use; the Herdr server needs `node` on its
    `PATH`. Use `pi list` to check package sources; do not load two copies of
@@ -285,13 +286,10 @@ in the Pi extension**. Neither alone enables sidebar filtering.
    `giuseppecrj/pi-herdr-agents/plugins/sidebar` with `herdr plugin install`,
    or link an existing compatible directory with `herdr plugin link`.
    Installing the Pi package does not install the Herdr plugin.
-3. Merge `"sidebar": { "enabled": true }` into the durable config described
-   above, preserving `status`, `models`, and all other settings. If the file
-   does not exist, first copy the installed package's `config.json.example`;
-   a sidebar-only config is invalid because `status` is required.
-4. Run `/reload` in each parent Pi session inside Herdr, then launch new
-   children. Children already running stay unmarked.
-5. Invoke Focus explicitly; installation and enablement never activate it:
+3. After installing or upgrading the extension, run `/reload` in each parent
+   Pi session inside Herdr, then launch new children. Running children
+   that were never marked are not marked retroactively.
+4. Invoke Focus explicitly; installation and enablement never activate it:
 
    ```bash
    herdr plugin action invoke pi-herdr-agents.sidebar.focus

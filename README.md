@@ -250,13 +250,11 @@ A `read, bash` allowlist is not a read-only boundary, because shell commands can
 
 The optional [Pi Herdr Agents Sidebar](plugins/sidebar/README.md) Herdr plugin adds two actions. Focus hides delegated Pi children from Herdr's Agents view. All removes this plugin's filter. It needs:
 
-- `pi-herdr-agents` version `3.2.0` or later, with `sidebar.enabled` turned on. On macOS, a release newer than `3.2.1`.
+- A `pi-herdr-agents` release newer than `3.3.1`, which marks children with no setting. Releases `3.2.0` through `3.3.1` also need `"sidebar": { "enabled": true }` in `config.json`, and macOS needs a release newer than `3.2.1`.
 - Linux or macOS
 - Herdr's Pi integration (`herdr integration install pi`), which reports each child's session to Herdr. The extension marks a child only while Herdr reports that child's own session.
 - Herdr `0.9.0` or later, the first release with the agent view API. Tested on `0.9.1` and `0.9.2-preview.2026-09-29-8e78f929d8f0`; other builds are untested.
 - `node` on the `PATH` of the Herdr server
-
-Setup has two parts. Neither part works alone.
 
 1. Install the Herdr plugin. Herdr shows the manifest and commands for review:
 
@@ -264,19 +262,8 @@ Setup has two parts. Neither part works alone.
    herdr plugin install giuseppecrj/pi-herdr-agents/plugins/sidebar
    ```
 
-2. Open `$PI_CODING_AGENT_DIR/herdr-agents/config.json` (default `~/.pi/agent/herdr-agents/config.json`). If it does not exist, copy `config.json.example` from the installed package there first. The extension rejects a `config.json` without its `status` section.
-3. Merge the `sidebar` section into the file. Keep `status`, `models`, and every other section:
-
-   ```json
-   {
-     "sidebar": {
-       "enabled": true
-     }
-   }
-   ```
-
-4. Run `/reload` in each parent Pi session, or start a new one. Then launch new children. Children that were already running stay unmarked.
-5. Run Focus yourself. Installing or enabling the plugin never turns it on:
+2. After upgrading the extension, run `/reload` in each parent Pi session, or start a new one. Running children that were never marked are not marked retroactively; launch new ones.
+3. Run Focus yourself. Installing or enabling the plugin never turns it on:
 
    ```bash
    herdr plugin action invoke pi-herdr-agents.sidebar.focus
@@ -298,7 +285,6 @@ The durable configuration file is `$PI_CODING_AGENT_DIR/herdr-agents/config.json
 | `persistent.maxAgents` | `3` | How many persistent specialists can stay open. |
 | `supervision.forcePolling`, `supervision.hangWarningMinutes` | `false`, `15` | Supervision transport and no-progress advisories. |
 | `panes.mode`, `panes.direction`, `panes.maxPerTab` | `"grouped"`, `"right"`, `4` | Where child panes open. |
-| `sidebar.enabled` | `false` | Pane markers for the sidebar plugin. |
 
 See [Configuration](docs/configuration.md) for every key, the task-model writer, and the events other extensions can use during `/subagents-init`.
 
@@ -307,7 +293,7 @@ See [Configuration](docs/configuration.md) for every key, the task-model writer,
 - Child agents are real Pi processes running with your user account's permissions, inside Herdr panes. Worktrees isolate Git checkouts, not processes or permissions.
 - The extension creates Herdr panes, tabs and managed worktrees only when a launch asks for them. It never pushes, merges, opens pull requests, deletes branches or removes worktrees on its own; cleanup is an explicit parent action ([worktree cleanup](docs/tools.md#explicit-worktree-cleanup)).
 - What it writes: `$PI_CODING_AGENT_DIR/herdr-agents/config.json` (only through `/subagents-init` or the writer tool, never on startup); per-launch artifacts under the parent session's `artifacts/<session-id>/` directory beside Pi's session store, which hold the child's full task text and any `systemPrompt` as Markdown files, activity snapshots and worktree manifests; and the child's own Pi session file. A managed worktree that carries its own `.pi/agent` directory receives that child's session inside the checkout. Treat task text as potentially sensitive when you share or inspect those files.
-- Managed worktree children record their PID, process start time, boot ID, and PID namespace in `<session>.process.json` beside their session. With [`sidebar.enabled`](docs/configuration.md#sidebar-markers), the parent reads each child pane's agent session from Herdr and reports one display-only pane token, `piha_delegated_v1`, on that pane through the Herdr socket. With the setting off, the extension writes no pane metadata.
+- Managed worktree children record their PID, process start time, boot ID, and PID namespace in `<session>.process.json` beside their session. Inside Herdr, the parent reads each child pane's agent session from Herdr and reports one display-only [sidebar marker](docs/configuration.md#sidebar-markers), the pane token `piha_delegated_v1`, on that pane through the Herdr socket. It writes no other pane metadata.
 - To uninstall: first list and remove any retained worktrees while the extension is still loaded (`/worktree list`, then `/worktree remove <target>`), because those commands leave with the package. If you installed the optional sidebar plugin, remove it with `herdr plugin uninstall pi-herdr-agents.sidebar` (or `herdr plugin unlink` for a linked copy). Then run `pi remove npm:pi-herdr-agents`, and delete `$PI_CODING_AGENT_DIR/herdr-agents/` and the `artifacts/` directories above if you no longer want the configuration and launch records.
 
 ## Troubleshooting

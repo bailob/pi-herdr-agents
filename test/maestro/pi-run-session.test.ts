@@ -13,6 +13,7 @@ import {
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
+import { createServer } from "node:net";
 import {
 	createWorktreeOperations,
 	readWorktreeManifest,
@@ -1600,11 +1601,8 @@ interface RecordedMarkerWrite {
 	live: boolean;
 }
 
-/** Turns markers on for the fixture's shared composition. */
-function markedSession(
-	f: Awaited<ReturnType<typeof makeFixture>>,
-	enabled = true,
-) {
+/** Injects marker I/O into the fixture's shared composition. */
+function markedSession(f: Awaited<ReturnType<typeof makeFixture>>) {
 	const writes: RecordedMarkerWrite[] = [];
 	/** The agent session Herdr reports for each pane, by pane ID. */
 	const sessions = new Map<string, string>();
@@ -1614,7 +1612,6 @@ function markedSession(
 	const session = runtime.createDefaultRunSession(
 		{
 			...f.options,
-			sidebarMarkers: enabled,
 			infrastructure: {
 				...infrastructure,
 				markerWriter: (write) => {
@@ -1655,16 +1652,12 @@ function markedSession(
 	};
 }
 
-/** Reloads the composition, as `/reload` does, with the setting changed. */
+/** Reloads the composition, as `/reload` does. */
 function reloadSession(
 	f: Awaited<ReturnType<typeof makeFixture>>,
 	previous: ReturnType<typeof runtime.createDefaultRunSession>,
-	enabled: boolean,
 ) {
-	return runtime.createDefaultRunSession(
-		{ ...f.options, sidebarMarkers: enabled },
-		previous,
-	);
+	return runtime.createDefaultRunSession(f.options, previous);
 }
 
 /** Bounded by iterations, not `Date.now`, which some tests freeze. */
@@ -1675,20 +1668,53 @@ async function until(predicate: () => boolean, label: string) {
 	}
 }
 
-test("sidebar markers are off by default: no Herdr writes", () =>
-	fixture(async (f) => {
-		const { session, writes, report } = markedSession(f, false);
-		const input = f.input("unmarked");
-		const handle = await session.spawnPi(input);
-		const record = f.latest();
-		assert.ok(record);
-		report(record);
-		await turn();
-		f.complete(record);
-		await session.supervise(handle, input.task);
-		await turn();
-		assert.deepEqual(writes, []);
-	}));
+test("injected infrastructure missing a marker seam never falls back to the ambient Herdr socket", async () => {
+	const dir = mkdtempSync(join(tmpdir(), "pi-marker-ambient-"));
+	const socketPath = join(dir, "herdr.sock");
+	let connections = 0;
+	const server = createServer((socket) => {
+		connections++;
+		socket.destroy();
+	});
+	await new Promise<void>((resolve) => server.listen(socketPath, resolve));
+	const ambient = process.env.HERDR_SOCKET_PATH;
+	process.env.HERDR_SOCKET_PATH = socketPath;
+	try {
+		await fixture(async (f) => {
+			const infrastructure = f.options.infrastructure;
+			assert.ok(infrastructure);
+			let writes = 0;
+			const session = runtime.createDefaultRunSession(
+				{
+					...f.options,
+					infrastructure: {
+						...infrastructure,
+						markerWriter: async () => {
+							writes++;
+							return "answered";
+						},
+					},
+				},
+				f.session,
+			);
+			const input = f.input("ambient");
+			const handle = await session.spawnPi(input);
+			const record = f.latest();
+			assert.ok(record);
+			await new Promise((resolve) => setTimeout(resolve, 300));
+			f.complete(record);
+			await session.supervise(handle, input.task);
+			await turn();
+			assert.equal(writes, 0, "no marker write without a session reader");
+		});
+		assert.equal(connections, 0, "no ambient Herdr socket connection");
+	} finally {
+		if (ambient === undefined) delete process.env.HERDR_SOCKET_PATH;
+		else process.env.HERDR_SOCKET_PATH = ambient;
+		await new Promise((resolve) => server.close(resolve));
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
 
 test("a delegated child is marked once Herdr reports its session and cleared before delivery", () =>
 	fixture(async (f) => {
@@ -1772,77 +1798,26 @@ test("suppressing a marked run clears its marker without waiting for renewal", (
 		);
 	}));
 
-test("turning sidebar markers off on reload clears a live marker after its in-flight renewal", (t) =>
+test("a marker still waiting for Herdr's session report survives a reload", () =>
 	fixture(async (f) => {
-		t.mock.timers.enable({ apis: ["Date"], now: 1_000_000 });
-		const marked = markedSession(f);
-		const input = f.input("live-before-reload");
-		await marked.session.spawnPi(input);
-		const record = f.latest();
-		assert.ok(record);
-		marked.report(record);
-		await until(() => marked.writes.length === 1, "the first marker write");
-		marked.hold();
-		t.mock.timers.tick(5_000);
-		marked.session.observe(input.task.id);
-		await until(() => marked.writes.length === 2, "the in-flight renewal");
-
-		const reloaded = reloadSession(f, marked.session, false);
-		await turn();
-		assert.equal(marked.writes.length, 2);
-		marked.release();
-		await until(() => marked.writes.length === 3, "the clearing write");
-		assert.deepEqual(
-			marked.writes.map(({ paneId, live }) => ({ paneId, live })),
-			[
-				{ paneId: record.surface, live: true },
-				{ paneId: record.surface, live: true },
-				{ paneId: record.surface, live: false },
-			],
-		);
-		assert.ok(marked.writes[2].seq > marked.writes[1].seq);
-		t.mock.timers.tick(5_000);
-		reloaded.observe(input.task.id);
-		await turn();
-		assert.equal(marked.writes.length, 3);
-	}));
-
-test("turning sidebar markers off on reload retires a pending marker; re-enabling marks only new children", (t) =>
-	fixture(async (f) => {
-		t.mock.timers.enable({ apis: ["Date"], now: 1_000_000 });
 		const marked = markedSession(f);
 		const input = f.input("pending-before-reload");
 		await marked.session.spawnPi(input);
-		const late = f.latest();
-		assert.ok(late);
-		await turn();
-
-		const reloaded = reloadSession(f, marked.session, false);
-		marked.report(late);
-		await turn();
-		t.mock.timers.tick(5_000);
-		reloaded.observe(input.task.id);
-		await turn();
-		assert.deepEqual(marked.writes, []);
-
-		const reenabled = reloadSession(f, reloaded, true);
-		t.mock.timers.tick(5_000);
-		reenabled.observe(input.task.id);
-		await turn();
-		assert.deepEqual(marked.writes, []);
-
-		await reenabled.spawnPi(f.input("after-reenable"));
 		const record = f.latest();
-		assert.ok(record && record !== late);
+		assert.ok(record);
+		await turn();
+		assert.deepEqual(marked.writes, []);
+
+		reloadSession(f, marked.session);
 		marked.report(record);
-		await until(() => marked.writes.length === 1, "the new child's marker");
+		await until(() => marked.writes.length === 1, "the reloaded marker");
 		assert.deepEqual(
 			marked.writes.map(({ paneId, live }) => ({ paneId, live })),
 			[{ paneId: record.surface, live: true }],
 		);
 	}));
 
-test("reloading with sidebar markers still on keeps renewing existing markers", (t) =>
+test("reloading keeps renewing existing markers", (t) =>
 	fixture(async (f) => {
 		t.mock.timers.enable({ apis: ["Date"], now: 1_000_000 });
 		const { session, writes, report } = markedSession(f);
@@ -1852,7 +1827,7 @@ test("reloading with sidebar markers still on keeps renewing existing markers", 
 		assert.ok(record);
 		report(record);
 		await until(() => writes.length === 1, "the first marker write");
-		const reloaded = reloadSession(f, session, true);
+		const reloaded = reloadSession(f, session);
 		await turn();
 		assert.equal(writes.length, 1);
 		t.mock.timers.tick(5_000);

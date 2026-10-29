@@ -303,31 +303,14 @@ too, as the role-pack bridge does.
 
 ## Sidebar markers
 
-Set `sidebar.enabled` to `true` to mark delegated children for the optional
+The extension always marks delegated children for the optional
 [Pi Herdr Agents Sidebar](../plugins/sidebar/README.md) Herdr plugin, whose Focus
-action hides marked children from Herdr's Agents view. The setting defaults to
-`false`.
+action hides marked children from Herdr's Agents view. There is no setting:
+install the plugin to use the markers, or uninstall it to ignore them. Releases
+`3.2.0` through `3.3.1` wrote markers only with `sidebar.enabled` set to `true`;
+later releases ignore a leftover `sidebar` key.
 
-```json
-{
-  "sidebar": {
-    "enabled": true
-  }
-}
-```
-
-Add the key to your existing `config.json`. The extension rejects a
-`config.json` without its `status` section, so copy `config.json.example`
-first if the file does not exist. Run `/reload` after changing the setting.
-Children launched before the change stay unmarked.
-
-Setting `sidebar.enabled` to `false` and running `/reload` retires every
-existing marker and clears the markers of running children. A clear can fail to
-reach Herdr, so a token still expires at most 15 seconds after the last write
-Herdr accepted. Setting it back to `true` marks only later launches; a child
-that was already running when you turned it off is never marked again.
-
-With markers on, the parent reads each fresh, resumed, persistent, or managed
+The parent reads each fresh, resumed, persistent, or managed
 worktree child's pane with `pane.get` through `HERDR_SOCKET_PATH`. Once Herdr
 reports the child's own session file as the pane's `agent_session`, within 15
 seconds of launch, the parent reports the pane token `piha_delegated_v1` with

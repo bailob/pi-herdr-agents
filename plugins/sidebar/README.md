@@ -2,7 +2,7 @@
 
 ![Pi Herdr Agents: a parent Pi session delegating to parallel child agents in dedicated Herdr panes, an isolated worktree and a retained session, with a live status widget.](https://raw.githubusercontent.com/giuseppecrj/pi-herdr-agents/main/docs/assets/pi-herdr-agents-gallery.png)
 
-> **Compatibility.** Sidebar support requires `pi-herdr-agents` version `3.2.0` or later. On macOS it requires a release newer than `3.2.1`.
+> **Compatibility.** Releases of `pi-herdr-agents` newer than `3.3.1` mark children with no setting. Releases `3.2.0` through `3.3.1` mark them only with `"sidebar": { "enabled": true }` in their `config.json`. On macOS, sidebar support requires a release newer than `3.2.1`.
 
 An optional [Herdr](https://herdr.dev) plugin for [Pi Herdr Agents](../../README.md). It keeps your main agents easy to find in Herdr's Agents view while [Pi](https://github.com/earendil-works/pi) runs delegated children.
 
@@ -14,19 +14,19 @@ The plugin adds two actions. The extension in the main package marks each delega
 - **All.** Removes Focus if this plugin set it, then shows every agent again. If another tool replaced the view, All leaves that view in place and reports which tool owns it.
 - **Display only.** Neither action closes, moves, or signals anything. Hidden children keep running, keep their panes, and still raise notifications. `herdr agent list` still lists them.
 - **No automatic Focus.** Installing or enabling the plugin never turns Focus on. You invoke it.
-- **Opt-in markers.** The extension writes pane markers only when you set `sidebar.enabled` to `true`.
+- **No setting.** The extension always marks delegated children's panes inside Herdr. Install this plugin to use the markers, or uninstall it to ignore them.
 
 ## Requirements
 
 - Herdr `0.9.0` or later. `0.9.0` is the first release with `agent.view.set` and `agent.view.clear`, the only Herdr methods the actions call, so the manifest declares `min_herdr_version = "0.9.0"`. The plugin was tested on `0.9.1` and `0.9.2-preview.2026-09-29-8e78f929d8f0`; other builds are untested. A build without the agent view API makes Focus and All fail with Herdr's error.
 - Linux or macOS. The manifest declares `linux` and `macos`. Windows is untested and not declared.
 - `node` on the `PATH` of the Herdr server. Herdr runs the actions as `node sidebar.mjs focus` and `node sidebar.mjs all`.
-- The `pi-herdr-agents` extension version `3.2.0` or later, installed in Pi with `sidebar.enabled` turned on. Without markers, Focus hides nothing. Versions `3.2.0` and `3.2.1` identify children through Linux `/proc`, so they mark nothing on macOS.
+- A `pi-herdr-agents` extension release newer than `3.3.1`. Without markers, Focus hides nothing. See the compatibility note above for older releases.
 - Herdr's Pi integration, installed in the Pi agent directory your parent and children use. The extension marks a child only while Herdr reports that child's own session file for its pane, and Herdr learns it from this integration. Check for `herdr-agent-state.ts` in `$PI_CODING_AGENT_DIR/extensions/`, or install it with `herdr integration install pi`.
 
 ## Install
 
-Setup has two parts. Install the Herdr plugin, then enable markers in a compatible Pi extension. The plugin alone hides nothing, and the setting alone adds no actions.
+Install the Herdr plugin, and make sure Pi loads a compatible extension. The plugin alone hides nothing, because the extension writes the markers.
 
 ### 1. Install the Herdr plugin
 
@@ -38,7 +38,7 @@ herdr plugin install giuseppecrj/pi-herdr-agents/plugins/sidebar
 
 For another published branch, tag, or commit, add `--ref` followed by that revision. The revision must contain the plugin directory.
 
-### 2. Turn on markers in the Pi extension
+### 2. Load a compatible Pi extension
 
 If Herdr's Pi integration is not installed yet, install it. It reports each Pi session to Herdr:
 
@@ -46,7 +46,7 @@ If Herdr's Pi integration is not installed yet, install it. It reports each Pi s
 herdr integration install pi
 ```
 
-If you do not already load `pi-herdr-agents` version `3.2.0` or later, install the latest npm release in Pi:
+If you do not already load a `pi-herdr-agents` release newer than `3.3.1`, install the latest npm release in Pi:
 
 ```bash
 pi install npm:pi-herdr-agents
@@ -54,21 +54,9 @@ pi install npm:pi-herdr-agents
 
 Use `pi list` to check your existing package sources. If a copy from another source is enabled, disable that copy with `pi config` before loading the npm package. Do not load both copies. Start Pi inside Herdr.
 
-1. Open `$PI_CODING_AGENT_DIR/herdr-agents/config.json`. The default is `~/.pi/agent/herdr-agents/config.json`.
-2. If the file does not exist, copy `config.json.example` from the extension there first. The extension rejects a `config.json` without its `status` section.
-3. Merge the `sidebar` section into the file. Keep the existing `status`, `models`, and other sections. Do not replace the file.
-
-   ```json
-   {
-     "sidebar": {
-       "enabled": true
-     }
-   }
-   ```
-
-4. Run `/reload` in each parent Pi session, or start a new one.
-5. Launch new children. Children that were already running stay unmarked.
-6. Invoke Focus yourself. See [Use Focus and All](#use-focus-and-all).
+1. After installing or upgrading the extension, run `/reload` in each parent Pi session, or start a new one.
+2. Launch new children. Running children that were never marked are not marked retroactively.
+3. Invoke Focus yourself. See [Use Focus and All](#use-focus-and-all).
 
 ### Check the result
 
@@ -89,7 +77,7 @@ herdr pane get <child-pane-id>
 - [Requirements](#requirements), [Install](#install), [Use Focus and All](#use-focus-and-all)
 - [Troubleshooting](#troubleshooting), [Safety](#safety), [Uninstall](#uninstall)
 - [Which rows Focus hides](#which-rows-focus-hides), [What a marker proves](#what-a-marker-proves), [Reusing a delegated pane](#reusing-a-delegated-pane), [Limits](#limits)
-- Main package: [Pi Herdr Agents](../../README.md) and its [sidebar markers](../../docs/configuration.md#sidebar-markers) setting
+- Main package: [Pi Herdr Agents](../../README.md) and its [sidebar markers](../../docs/configuration.md#sidebar-markers)
 
 ## Use Focus and All
 
@@ -125,7 +113,7 @@ A Herdr server restart drops the view and every marker. The plugin has no startu
 
 ## Troubleshooting
 
-- **A child you expect to be hidden is still visible.** Check that `sidebar.enabled` is `true`, that you ran `/reload` in the parent, and that the child was launched after the reload. Then run Focus again. A blocked child or a child with unknown status is always shown.
+- **A child you expect to be hidden is still visible.** Check that the parent loads a compatible extension, that you ran `/reload` in the parent after installing or upgrading it, and that the child was launched after the reload. Then run Focus again. A blocked child or a child with unknown status is always shown.
 - **No child is ever marked.** Run `herdr pane get` on a child's pane. If it shows no `agent_session`, Herdr's Pi integration is missing from the agent directory the child uses. Install it with `herdr integration install pi`, then launch new children. A child that reports only a session ID, not a session file, is never marked.
 - **A row you expect is missing.** Run All. Markers change only what the Agents view shows.
 - **Focus or All exits with status `1`.** Read the log with the command above. The message names the cause, such as a Herdr build without the agent view API.
@@ -136,7 +124,7 @@ A Herdr server restart drops the view and every marker. The plugin has no startu
 
 - Markers are display only. They are not a security boundary.
 - The plugin sends requests to your local Herdr server. It does not close, move, or signal panes.
-- With `sidebar.enabled` on, the parent reads each child pane's agent session from Herdr and reports one pane token, `piha_delegated_v1`, through the Herdr socket. With it off, the extension writes no pane metadata. See [Safety and uninstall](../../README.md#safety-and-uninstall) in the main README.
+- Inside Herdr, the parent reads each child pane's agent session from Herdr and reports one pane token, `piha_delegated_v1`, through the Herdr socket. It writes no other pane metadata, and the token stays harmless when this plugin is not installed. See [Safety and uninstall](../../README.md#safety-and-uninstall) in the main README.
 
 ## Uninstall
 
@@ -147,7 +135,7 @@ A Herdr server restart drops the view and every marker. The plugin has no startu
    herdr plugin uninstall pi-herdr-agents.sidebar
    ```
 
-3. Set `sidebar.enabled` to `false`, or delete the `sidebar` key, and run `/reload` in each parent session. The reload clears the markers of children that are still running and stops renewing them. A marker whose clear does not reach Herdr expires within 15 seconds.
+The extension keeps marking children after you uninstall the plugin. Without the plugin nothing reads the markers, so they change nothing you see. Uninstall the extension to stop them.
 
 ## Which rows Focus hides
 

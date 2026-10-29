@@ -73,7 +73,7 @@ _Avoid_: argv match, foreground process, shell visibility
 
 **Delegated marker**:
 The display-only pane token `piha_delegated_v1=live` that a parent reports on
-a delegated child's pane when `sidebar.enabled` is on. It means Herdr reported
+a delegated child's pane inside Herdr; there is no setting. It means Herdr reported
 the child's own session file as the pane's agent session within the last 15
 seconds, not that the child is alive when Herdr draws the row. One stable
 source, a 15-second TTL, and increasing sequence numbers bound a leftover

@@ -9,6 +9,10 @@
 > no longer record a process identity. The shipped contract is in
 > [`plugins/sidebar/README.md`](../plugins/sidebar/README.md); the rest of this
 > plan is the original record.
+>
+> **Superseded host setting.** Releases after `3.3.1` removed the
+> `sidebar.enabled` setting below. The extension now always marks delegated
+> children inside Herdr; users who do not want Focus uninstall the plugin.
 
 Status: locally verified and uncommitted, with one accepted limitation. All four
 adversarial reviews have reported and the parent has triaged them. Coverage

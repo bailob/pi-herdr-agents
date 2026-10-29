@@ -1,8 +1,7 @@
 /**
- * Real parent and child Pi sessions with sidebar markers on: delegated
- * children's panes carry the marker while their processes run, the parent's
- * pane never does, and the retained worktree root loses it once its child
- * exits, and turning the setting off then reloading the parent clears them.
+ * Real parent and child Pi sessions: delegated children's panes carry the
+ * sidebar marker while their processes run, the parent's pane never does, and
+ * the retained worktree root loses it once its child exits.
  * Run inside an isolated Herdr server, like the rest of this suite.
  *
  * The fixture finds its children by launch record and process identity, never
@@ -13,13 +12,7 @@
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import {
-	existsSync,
-	mkdirSync,
-	readFileSync,
-	realpathSync,
-	writeFileSync,
-} from "node:fs";
+import { existsSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
 	getAvailableBackends,
@@ -212,28 +205,11 @@ for (const backend of backends) {
 		let launch: Launch | undefined;
 		let canary: Canary | undefined;
 
-		/** Users seed config.json from the example, then add the sidebar key. */
-		function writeSidebarSetting(enabled: boolean) {
-			const configDir = join(env.dir, ".pi", "agent", "herdr-agents");
-			mkdirSync(configDir, { recursive: true });
-			const example = JSON.parse(
-				readFileSync(
-					new URL("../../config.json.example", import.meta.url),
-					"utf8",
-				),
-			);
-			writeFileSync(
-				join(configDir, "config.json"),
-				JSON.stringify({ ...example, sidebar: { enabled } }),
-			);
-		}
-
 		beforeEach(() => {
 			env = createTestEnv(backend);
 			launch = undefined;
 			canary = undefined;
 			resetProviderRequests();
-			writeSidebarSetting(true);
 			// Markers follow the sessions Herdr's own Pi integration reports, so
 			// the isolated agent home needs it like a user's does.
 			execFileSync("herdr", ["integration", "install", "pi"], {
@@ -514,7 +490,7 @@ for (const backend of backends) {
 			);
 		});
 
-		it("clears running children's markers at once when the setting is turned off and the parent reloads", async () => {
+		it("keeps running children's markers live across a parent reload", async () => {
 			const run = await launchHeldChildren();
 			const deadline = Date.now() + PI_TIMEOUT;
 			for (;;) {
@@ -524,23 +500,9 @@ for (const backend of backends) {
 					throw new Error("timed out waiting for an idle parent");
 				await sleep(250);
 			}
-			writeSidebarSetting(false);
-			const reloadAt = Date.now();
 			runInPane(run.parent, "/reload");
 			await waitForScreen(run.parent, /Reloaded keybindings/, PI_TIMEOUT);
-			// Expiry needs 15s after the last renewal, at most ~5s before the
-			// reload; clearing well inside that shows retirement, not the TTL.
-			await waitFor(
-				() =>
-					ownedPanes(run.worktree.workspace).some(
-						(pane) => pane.token !== undefined,
-					)
-						? undefined
-						: true,
-				"cleared markers after the reload",
-				8_000,
-			);
-			const cleared = Date.now() - reloadAt;
+			// Past one 15-second TTL, only the reloaded parent's renewals keep them.
 			await sleep(18_000);
 			for (const [pane, name] of [
 				[run.ordinary.pane, `Sidebar-ordinary-${run.id}`],
@@ -548,11 +510,11 @@ for (const backend of backends) {
 			])
 				foregroundPi(pane, `PI_SUBAGENT_NAME=${name}`);
 			assert.deepEqual(
-				ownedPanes(run.worktree.workspace).filter(
-					(pane) => pane.token !== undefined,
-				),
-				[],
-				`markers cleared ${cleared}ms after /reload, then stayed clear`,
+				ownedPanes(run.worktree.workspace)
+					.filter((pane) => pane.token === "live")
+					.map((pane) => pane.pane)
+					.sort(),
+				[run.ordinary.pane, run.worktree.pane].sort(),
 			);
 		});
 

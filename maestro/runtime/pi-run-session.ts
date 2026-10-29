@@ -352,8 +352,6 @@ export interface DefaultRunSessionOptions {
 	hooks: PiRunSessionHooks;
 	persistent: PiPersistentHostOperations;
 	forcePolling: boolean;
-	/** Mark delegated children's panes for the Herdr sidebar plugin. */
-	sidebarMarkers?: boolean;
 }
 // pi-herdr-agents extension
 export interface PiWorktreeHandoffInput {
@@ -721,15 +719,6 @@ export function createDefaultRunSession(
 	if (adopted) resumePi = state.resumePi;
 	// Live markers and their sequence survive a reload with their runs.
 	state.markers ??= createDelegatedMarkers(options.infrastructure);
-	// Turning the setting off retires every marker now, pending ones included;
-	// a retired marker never writes live again, even if the setting returns.
-	if (!options.sidebarMarkers)
-		for (const entry of state.entries.values()) entry.marker?.retire();
-
-	/** Markers for new launches, only while the sidebar setting is on. */
-	function enabledMarkers(): DelegatedMarkers | undefined {
-		return state.options.sidebarMarkers ? state.markers : undefined;
-	}
 
 	function prune(id: string) {
 		if (!state.kernel.getTask(id)) state.entries.delete(id);
@@ -843,7 +832,7 @@ export function createDefaultRunSession(
 		if (suppressed)
 			child.lifecycle = markDelivery(child.lifecycle, "suppressed");
 		else {
-			entry.marker = enabledMarkers()?.attach(child);
+			entry.marker = state.markers?.attach(child);
 			state.entries.set(task.id, entry);
 		}
 		return {
