@@ -1,12 +1,17 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
 import {
 	ALL_MESSAGE,
 	FOCUS_MESSAGE,
+	RESTORE_ALL_MESSAGE,
+	RESTORE_FOCUS_MESSAGE,
+	VIEW_FILE,
+	readChoice,
 	FOCUS_PARAMS,
 	PLUGIN_ID,
 	VIEW_SOURCE,
@@ -109,9 +114,14 @@ describe("sidebar plugin contract", () => {
 			[
 				["node", "sidebar.mjs", "focus"],
 				["node", "sidebar.mjs", "all"],
+				["node", "sidebar.mjs", "restore"],
+				["node", "sidebar.mjs", "restore"],
 			],
 		);
-		assert.doesNotMatch(manifest, /\[\[(startup|events|panes)\]\]/);
+		assert.match(manifest, /^version = "0\.2\.0"$/m);
+		assert.match(manifest, /^\[\[startup\]\]$/m);
+		assert.match(manifest, /^\[\[events\]\]\non = "pane\.agent_detected"$/m);
+		assert.doesNotMatch(manifest, /\[\[panes\]\]/);
 	});
 });
 
@@ -298,4 +308,132 @@ describe("plugin socket request", () => {
 				assert.match(result.stderr, /source other-tool/);
 			},
 		));
+});
+
+describe("remembered view choice", () => {
+	const focusReply = replyResult({
+		type: "agent_view",
+		active: true,
+		source: VIEW_SOURCE,
+		label: "focus",
+	});
+	const clearReply = replyResult({ type: "agent_view", active: false });
+
+	function withStateDir(body) {
+		const dir = mkdtempSync(join(tmpdir(), "sidebar-state-"));
+		return Promise.resolve(body(dir)).finally(() =>
+			rmSync(dir, { recursive: true, force: true }),
+		);
+	}
+	const methods = (requests) => requests.map(({ method }) => method);
+	const saved = (dir) => readFileSync(join(dir, VIEW_FILE), "utf8");
+
+	it("restores Focus by default and never writes the choice", () =>
+		withStateDir((dir) =>
+			withFakeHerdrSocket(focusReply, async (path, requests) => {
+				const result = await run("restore", path, {
+					HERDR_PLUGIN_STATE_DIR: dir,
+				});
+				assert.deepEqual(result, {
+					code: 0,
+					log: [RESTORE_FOCUS_MESSAGE],
+					error: [],
+				});
+				assert.deepEqual(requests[0].params, FOCUS_PARAMS);
+				assert.throws(() => saved(dir), { code: "ENOENT" });
+			}),
+		));
+
+	it("remembers All, and restore then leaves Herdr alone", () =>
+		withStateDir((dir) =>
+			withFakeHerdrSocket(clearReply, async (path, requests) => {
+				const env = { HERDR_PLUGIN_STATE_DIR: dir };
+				assert.equal((await run("all", path, env)).code, 0);
+				assert.deepEqual(JSON.parse(saved(dir)), { view: "all" });
+				const result = await run("restore", path, env);
+				assert.deepEqual(result, {
+					code: 0,
+					log: [RESTORE_ALL_MESSAGE],
+					error: [],
+				});
+				assert.deepEqual(methods(requests), ["agent.view.clear"]);
+			}),
+		));
+
+	it("saves All even when another tool's view stays", () =>
+		withStateDir((dir) =>
+			withFakeHerdrSocket(
+				replyResult({ type: "agent_view", active: true, source: "other" }),
+				async (path) => {
+					const result = await run("all", path, {
+						HERDR_PLUGIN_STATE_DIR: dir,
+					});
+					assert.equal(result.code, 3);
+					assert.deepEqual(JSON.parse(saved(dir)), { view: "all" });
+				},
+			),
+		));
+
+	it("saves Focus again after All", () =>
+		withStateDir((dir) => {
+			const env = { HERDR_PLUGIN_STATE_DIR: dir };
+			return withFakeHerdrSocket(clearReply, async (path) => {
+				await run("all", path, env);
+				assert.equal(readChoice(env), "all");
+			}).then(() =>
+				withFakeHerdrSocket(focusReply, async (path, requests) => {
+					assert.equal((await run("focus", path, env)).code, 0);
+					assert.deepEqual(JSON.parse(saved(dir)), { view: "focus" });
+					assert.equal((await run("restore", path, env)).code, 0);
+					assert.deepEqual(methods(requests), [
+						"agent.view.set",
+						"agent.view.set",
+					]);
+				}),
+			);
+		}));
+
+	it("treats missing or malformed state as focus", () =>
+		withStateDir(async (dir) => {
+			const env = { HERDR_PLUGIN_STATE_DIR: dir };
+			assert.equal(readChoice(env), "focus");
+			for (const text of ["", "not json", "[]", '{"view":"nope"}', "null"]) {
+				writeFileSync(join(dir, VIEW_FILE), text);
+				assert.equal(readChoice(env), "focus", text);
+			}
+			writeFileSync(join(dir, VIEW_FILE), '{"view":"all"}');
+			assert.equal(readChoice(env), "all");
+		}));
+
+	it("works without a state dir and behaves as focus", () =>
+		withFakeHerdrSocket(focusReply, async (path, requests) => {
+			assert.deepEqual(await run("restore", path), {
+				code: 0,
+				log: [RESTORE_FOCUS_MESSAGE],
+				error: [],
+			});
+			assert.deepEqual(methods(requests), ["agent.view.set"]);
+		}));
+
+	it("keeps the exit code when saving fails and says so", () =>
+		withStateDir((dir) =>
+			withFakeHerdrSocket(clearReply, async (path) => {
+				const blocked = join(dir, "file");
+				writeFileSync(blocked, "x");
+				const result = await run("all", path, {
+					HERDR_PLUGIN_STATE_DIR: join(blocked, "state"),
+				});
+				assert.equal(result.code, 0);
+				assert.equal(result.log.length, 1);
+				assert.ok(result.log[0].startsWith(ALL_MESSAGE));
+				assert.match(result.log[0], /Your choice was not saved/);
+			}),
+		));
+
+	it("reports a failed restore with exit 1", () =>
+		withFakeHerdrSocket(replyError("boom", "no"), async (path) => {
+			const result = await run("restore", path);
+			assert.equal(result.code, 1);
+			assert.deepEqual(result.error, ["Focus restore failed: boom: no"]);
+		}));
 });

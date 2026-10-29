@@ -289,13 +289,16 @@ plugin alone hides nothing.
 3. After installing or upgrading the extension, run `/reload` in each parent
    Pi session inside Herdr, then launch new children. Running children
    that were never marked are not marked retroactively.
-4. Invoke Focus explicitly; installation and enablement never activate it:
+4. Focus turns on by default: the plugin applies it at the first agent Herdr
+   detects after install and after a server restart. To change it, invoke an
+   action; the last choice sticks, and All stops the automatic Focus:
 
    ```bash
    herdr plugin action invoke pi-herdr-agents.sidebar.focus
    ```
 
-Focus changes the server-wide Agents view, replacing any existing view. It
+Focus changes the server-wide Agents view, replacing any existing view,
+including another tool's whenever an agent is detected unless All was chosen. It
 hides marked children except those blocked or with unknown status; it never
 stops children or suppresses notifications. To restore rows, invoke
 `herdr plugin action invoke pi-herdr-agents.sidebar.all`. All clears only this

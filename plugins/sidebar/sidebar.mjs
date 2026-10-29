@@ -1,7 +1,15 @@
 // Pi Herdr Agents Sidebar: the Focus and All actions for Herdr's Agents view.
 // Herdr may install only this directory, so the file uses Node built-ins only.
-import { realpathSync } from "node:fs";
+import {
+	mkdirSync,
+	readFileSync,
+	realpathSync,
+	renameSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import net from "node:net";
+import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 export const PLUGIN_ID = "pi-herdr-agents.sidebar";
@@ -150,12 +158,133 @@ export const FOCUS_MESSAGE =
 	"Run All to show every agent again.";
 export const ALL_MESSAGE = "All agents are shown. No agent view is active.";
 
+export const RESTORE_FOCUS_MESSAGE =
+	"Focus restored. Delegated Pi children are hidden from the Agents view. Run All to show every agent.";
+export const RESTORE_ALL_MESSAGE =
+	"Focus not restored: you chose All. Run Focus to hide delegated children again.";
+
+export const VIEW_FILE = "view.json";
+
+/** The saved choice; a missing, unreadable, or malformed file means focus. */
+export function readChoice(env) {
+	const dir = env.HERDR_PLUGIN_STATE_DIR;
+	if (!dir) return "focus";
+	try {
+		const saved = JSON.parse(readFileSync(join(dir, VIEW_FILE), "utf8"));
+		return isRecord(saved) && saved.view === "all" ? "all" : "focus";
+	} catch {
+		return "focus";
+	}
+}
+
+/** Returns an error message, or undefined when saved or when there is no state dir. */
+export function saveChoice(env, choice) {
+	const dir = env.HERDR_PLUGIN_STATE_DIR;
+	if (!dir) return undefined;
+	const temp = join(dir, `${VIEW_FILE}.${process.pid}.tmp`);
+	try {
+		mkdirSync(dir, { recursive: true });
+		writeFileSync(temp, `${JSON.stringify({ view: choice })}\n`);
+		renameSync(temp, join(dir, VIEW_FILE));
+		return undefined;
+	} catch (error) {
+		try {
+			rmSync(temp, { force: true });
+		} catch {
+			// The directory is unusable; the save error below is the one to report.
+		}
+		return describe(error instanceof Error ? error.message : error);
+	}
+}
+
+async function applyFocus(ctx, name, success) {
+	const reply = await ctx.request(
+		ctx.socketPath,
+		"agent.view.set",
+		FOCUS_PARAMS,
+	);
+	if (!reply.ok) {
+		ctx.out.error(
+			`${name} failed: ${reply.error.code}: ${reply.error.message}`,
+		);
+		return 1;
+	}
+	if (
+		!isAgentView(reply.result) ||
+		reply.result.active !== true ||
+		reply.result.source !== VIEW_SOURCE
+	) {
+		ctx.out.error(`${name} failed: unexpected reply ${describe(reply.result)}`);
+		return 1;
+	}
+	ctx.out.log(success + ctx.note);
+	return 0;
+}
+
+async function clearView(ctx) {
+	const { out } = ctx;
+	// Guarded clear: Herdr leaves a view owned by another source in place and
+	// reports it, so All never claims that a foreign filter is gone.
+	const reply = await ctx.request(
+		ctx.socketPath,
+		"agent.view.clear",
+		ALL_PARAMS,
+	);
+	if (!reply.ok) {
+		out.error(`All failed: ${reply.error.code}: ${reply.error.message}`);
+		return 1;
+	}
+	if (!isAgentView(reply.result)) {
+		out.error(`All failed: unexpected reply ${describe(reply.result)}`);
+		return 1;
+	}
+	if (!reply.result.active) {
+		out.log(ALL_MESSAGE + ctx.note);
+		return 0;
+	}
+	if (reply.result.source === VIEW_SOURCE) {
+		out.error("All failed: Herdr still reports this plugin's view as active.");
+		return 1;
+	}
+	const label = reply.result.label
+		? `, label ${describe(reply.result.label)}`
+		: "";
+	out.error(
+		`Another agent view is still active (source ${describe(reply.result.source)}${label}). ` +
+			"All clears only this plugin's Focus, so that view was left in place and may still hide agents. " +
+			"Clear it from the tool that set it." +
+			ctx.note,
+	);
+	return 3;
+}
+
+async function restoreView(ctx) {
+	if (readChoice(ctx.env) === "all") {
+		ctx.out.log(RESTORE_ALL_MESSAGE);
+		return 0;
+	}
+	return applyFocus(ctx, "Focus restore", RESTORE_FOCUS_MESSAGE);
+}
+
+// `save` is the choice an action records; restore only reads it.
+const ACTIONS = {
+	focus: {
+		save: "focus",
+		run: (ctx) => applyFocus(ctx, "Focus", FOCUS_MESSAGE),
+	},
+	all: { save: "all", run: clearView },
+	restore: { save: undefined, run: restoreView },
+};
+
 /** Runs one action and returns its exit code; output goes through `out`. */
 export async function runAction(action, options) {
 	const { env, out } = options;
 	const request = options.request ?? requestHerdr;
-	if (action !== "focus" && action !== "all") {
-		out.error(`Unknown action ${describe(action)}; expected focus or all.`);
+	const entry = Object.hasOwn(ACTIONS, action) ? ACTIONS[action] : undefined;
+	if (!entry) {
+		out.error(
+			`Unknown action ${describe(action)}; expected focus, all, or restore.`,
+		);
 		return 2;
 	}
 	const socketPath = env.HERDR_SOCKET_PATH;
@@ -171,51 +300,9 @@ export async function runAction(action, options) {
 		);
 		return 1;
 	}
-	if (action === "focus") {
-		const reply = await request(socketPath, "agent.view.set", FOCUS_PARAMS);
-		if (!reply.ok) {
-			out.error(`Focus failed: ${reply.error.code}: ${reply.error.message}`);
-			return 1;
-		}
-		if (
-			!isAgentView(reply.result) ||
-			reply.result.active !== true ||
-			reply.result.source !== VIEW_SOURCE
-		) {
-			out.error(`Focus failed: unexpected reply ${describe(reply.result)}`);
-			return 1;
-		}
-		out.log(FOCUS_MESSAGE);
-		return 0;
-	}
-	// Guarded clear: Herdr leaves a view owned by another source in place and
-	// reports it, so All never claims that a foreign filter is gone.
-	const reply = await request(socketPath, "agent.view.clear", ALL_PARAMS);
-	if (!reply.ok) {
-		out.error(`All failed: ${reply.error.code}: ${reply.error.message}`);
-		return 1;
-	}
-	if (!isAgentView(reply.result)) {
-		out.error(`All failed: unexpected reply ${describe(reply.result)}`);
-		return 1;
-	}
-	if (!reply.result.active) {
-		out.log(ALL_MESSAGE);
-		return 0;
-	}
-	if (reply.result.source === VIEW_SOURCE) {
-		out.error("All failed: Herdr still reports this plugin's view as active.");
-		return 1;
-	}
-	const label = reply.result.label
-		? `, label ${describe(reply.result.label)}`
-		: "";
-	out.error(
-		`Another agent view is still active (source ${describe(reply.result.source)}${label}). ` +
-			"All clears only this plugin's Focus, so that view was left in place and may still hide agents. " +
-			"Clear it from the tool that set it.",
-	);
-	return 3;
+	const saveError = entry.save ? saveChoice(env, entry.save) : undefined;
+	const note = saveError ? ` Your choice was not saved: ${saveError}` : "";
+	return entry.run({ env, out, request, socketPath, note });
 }
 
 function isMain() {

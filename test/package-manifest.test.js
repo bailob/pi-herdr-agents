@@ -169,7 +169,7 @@ describe("pack-neutral package contents", () => {
 			assert.ok(existsSync(join(root, "plugins/sidebar", file)), file);
 			for (const arg of rest) assert.match(arg, /^[a-z]+$/);
 		}
-		assert.doesNotMatch(pluginManifest, /\[\[(build|startup)\]\]/);
+		assert.doesNotMatch(pluginManifest, /\[\[build\]\]/);
 	});
 
 	it("does not ship the logs pi-lens writes under .pi-lens-probe-home", () => {

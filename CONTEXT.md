@@ -83,10 +83,10 @@ _Avoid_: liveness proof, ownership record, security boundary, per-run source, pr
 
 **Sidebar Focus**:
 The Herdr agent view that the optional `pi-herdr-agents.sidebar` plugin sets
-on request. It hides rows whose delegated marker is `live` while their status
+by default and on request. Hooks re-apply it unless the user chose All. It hides rows whose delegated marker is `live` while their status
 is idle, working, or done, and keeps blocked, unknown, and unmarked rows. All
 clears only this plugin's view and reports a view that another tool owns.
-_Avoid_: hiding processes, notification filter, automatic view, popup
+_Avoid_: hiding processes, notification filter, popup
 
 **Pi startup confirmation**:
 The bounded check that a `/worktree` handoff's Pi is running before its

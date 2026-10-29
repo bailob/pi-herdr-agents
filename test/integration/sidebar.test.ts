@@ -289,7 +289,10 @@ describe("sidebar plugin on isolated Herdr", {
 	async function rendered(): Promise<string[]> {
 		assert.ok(viewer);
 		const read = field(
-			await viewer.ok("pane.read", { pane_id: viewerPane, source: "visible" }),
+			await viewer.ok("pane.read", {
+				pane_id: viewerPane,
+				source: "visible",
+			}),
 			"read",
 		);
 		const lines = text(read, "text")
@@ -326,7 +329,10 @@ describe("sidebar plugin on isolated Herdr", {
 		const logId = text(field(invoked, "log"), "log_id");
 		for (let i = 0; i < 100; i++) {
 			const logs = (
-				await target.ok("plugin.log.list", { plugin_id: PLUGIN_ID, limit: 50 })
+				await target.ok("plugin.log.list", {
+					plugin_id: PLUGIN_ID,
+					limit: 50,
+				})
 			).logs;
 			const log = Array.isArray(logs)
 				? logs.find((entry) => isRecord(entry) && entry.log_id === logId)
@@ -428,6 +434,7 @@ describe("sidebar plugin on isolated Herdr", {
 		assert.equal(linked.plugin_id, PLUGIN_ID);
 		assert.equal(linked.name, "Pi Herdr Agents Sidebar");
 		assert.equal(linked.warnings, undefined);
+		assert.equal(linked.version, "0.2.0");
 		const actions = (
 			await target.ok("plugin.action.list", { plugin_id: PLUGIN_ID })
 		).actions;

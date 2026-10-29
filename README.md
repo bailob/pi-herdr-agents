@@ -248,7 +248,7 @@ A `read, bash` allowlist is not a read-only boundary, because shell commands can
 
 ## Sidebar plugin
 
-The optional [Pi Herdr Agents Sidebar](plugins/sidebar/README.md) Herdr plugin adds two actions. Focus hides delegated Pi children from Herdr's Agents view. All removes this plugin's filter. It needs:
+The optional [Pi Herdr Agents Sidebar](plugins/sidebar/README.md) Herdr plugin adds two actions and turns Focus on by default. Focus hides delegated Pi children from Herdr's Agents view. All removes this plugin's filter and stays off until you run Focus again. It needs:
 
 - A `pi-herdr-agents` release newer than `3.3.1`, which marks children with no setting. Releases `3.2.0` through `3.3.1` also need `"sidebar": { "enabled": true }` in `config.json`, and macOS needs a release newer than `3.2.1`.
 - Linux or macOS
@@ -263,14 +263,14 @@ The optional [Pi Herdr Agents Sidebar](plugins/sidebar/README.md) Herdr plugin a
    ```
 
 2. After upgrading the extension, run `/reload` in each parent Pi session, or start a new one. Running children that were never marked are not marked retroactively; launch new ones.
-3. Run Focus yourself. Installing or enabling the plugin never turns it on:
+3. Focus turns on by itself at the first agent Herdr detects after install, and again after a Herdr server restart. To change it, run an action. Your last choice sticks:
 
    ```bash
    herdr plugin action invoke pi-herdr-agents.sidebar.focus
    herdr plugin action invoke pi-herdr-agents.sidebar.all
    ```
 
-Focus replaces the server-wide Agents view, including any filter set by another tool. All clears only this plugin's view and leaves another tool's view untouched.
+Focus replaces the server-wide Agents view, including any filter set by another tool. Because Herdr keeps one view, the plugin also replaces another tool's view whenever it detects an agent, unless you chose All. All clears only this plugin's view and leaves another tool's view untouched.
 
 Focus is display only. Hidden children keep running and still raise notifications. Blocked children and children with unknown status stay visible. The marker follows the pane and is cleared within about 5 seconds after the child exits or is suspended, so an agent you start by hand in a delegated pane can stay hidden that long. See [Sidebar markers](docs/configuration.md#sidebar-markers) and the plugin's [limits](plugins/sidebar/README.md#reusing-a-delegated-pane).
 
