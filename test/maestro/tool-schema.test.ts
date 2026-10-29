@@ -197,6 +197,30 @@ describe("tool schema compatibility rules", () => {
 		);
 	});
 
+	it("flags an anyOf branch that shares a constraint keyword with its siblings", () => {
+		const num: JsonValue = { type: "number" };
+		const withBranch = (properties: Record<string, JsonValue>): JsonValue => ({
+			type: "object",
+			properties,
+			anyOf: [{ properties: { a: str }, description: "branch" }],
+		});
+		assert.match(
+			breaking(obj({ a: str }), withBranch({ a: num }))[0],
+			/t: anyOf branch 0 shares properties with its siblings/,
+		);
+		assert.match(
+			breaking(withBranch({ b: str }), obj({ a: str, b: num }))[0],
+			/t: anyOf branch 0 shares properties with its siblings/,
+		);
+		assert.deepEqual(
+			breaking(
+				{ description: "old", anyOf: [{ type: "string", description: "x" }] },
+				{ description: "new", anyOf: [{ type: "string", description: "y" }] },
+			),
+			[],
+		);
+	});
+
 	it("flags a removed enum or const value and allows widening", () => {
 		const literals = (...values: string[]): JsonValue => ({
 			type: "string",

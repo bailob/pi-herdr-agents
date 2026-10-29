@@ -183,7 +183,7 @@ Release copies `current.json` over it (`RELEASING.md:88-94`).
 as breaking when a client written for `released.json` could fail. These changes
 are breaking. Line numbers in this list refer to that file.
 
-- A tool is removed, renamed, or no longer registered in a scope (`:227-240`).
+- A tool is removed, renamed, or no longer registered in a scope (`:250-263`).
 - A property is removed, becomes required, or is added as required (`:66-82`).
 - A `type` changes (`:160-163`), or a `pattern` is added or changes
   (`:164-165`).
@@ -192,7 +192,10 @@ are breaking. Line numbers in this list refer to that file.
   (`:122-152`).
 - `additionalProperties` narrows, such as `true` to `false` (`:86-102`).
 - `items` narrow (`:170-178`).
-- An old `anyOf` branch has no accepting branch in the new schema (`:186-219`).
+- An old `anyOf` branch has no accepting branch in the new schema (`:205-242`).
+- An `anyOf` branch on either side shares a keyword other than `description`,
+  `title`, `default`, or `examples` with its sibling keywords, which the checker
+  does not support (`:185-202`).
 - Any keyword the checker does not recognize changes (`:179-181`).
 
 Changes to `description`, `title`, `default`, and `examples` are ignored

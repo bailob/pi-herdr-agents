@@ -182,6 +182,25 @@ function compareLeaf(
 	return problems;
 }
 
+/**
+ * Spreading a branch over its siblings would drop a sibling constraint the
+ * branch also defines, so such overlaps are unsupported.
+ */
+function branchOverlaps(
+	rest: SchemaNode,
+	branches: JsonValue[],
+	path: string,
+): string[] {
+	return branches.flatMap((branch, index) =>
+		Object.keys(asNode(branch) ?? {})
+			.filter((key) => !IGNORED.has(key) && key in rest)
+			.map(
+				(key) =>
+					`${path}: anyOf branch ${index} shares ${key} with its siblings (unsupported)`,
+			),
+	);
+}
+
 /** Every value the old node accepted must still be accepted by the new node. */
 function compareNodes(
 	oldNode: SchemaNode,
@@ -191,6 +210,8 @@ function compareNodes(
 	const oldBranches = oldNode.anyOf;
 	if (Array.isArray(oldBranches)) {
 		const rest = without(oldNode, "anyOf");
+		const overlaps = branchOverlaps(rest, oldBranches, path);
+		if (overlaps.length > 0) return overlaps;
 		return oldBranches.flatMap((branch, index) => {
 			const branchNode = asNode(branch);
 			if (!branchNode) return [`${path}: unrecognized anyOf branch ${index}`];
@@ -204,6 +225,8 @@ function compareNodes(
 	const newBranches = newNode.anyOf;
 	if (Array.isArray(newBranches)) {
 		const rest = without(newNode, "anyOf");
+		const overlaps = branchOverlaps(rest, newBranches, path);
+		if (overlaps.length > 0) return overlaps;
 		const accepted = newBranches.some((branch) => {
 			const branchNode = asNode(branch);
 			return (
