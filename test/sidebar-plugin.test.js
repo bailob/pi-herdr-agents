@@ -430,6 +430,31 @@ describe("remembered view choice", () => {
 			}),
 		));
 
+	it("undoes its Focus when All runs while that Focus is in flight", () =>
+		withStateDir(async (dir) => {
+			const env = {
+				HERDR_SOCKET_PATH: "/unused",
+				HERDR_PLUGIN_ID: PLUGIN_ID,
+				HERDR_PLUGIN_STATE_DIR: dir,
+			};
+			const sent = [];
+			const request = async (_socket, method) => {
+				sent.push(method);
+				if (method === "agent.view.clear")
+					return { ok: true, result: { type: "agent_view", active: false } };
+				writeFileSync(join(dir, VIEW_FILE), '{"view":"all"}');
+				return {
+					ok: true,
+					result: { type: "agent_view", active: true, source: VIEW_SOURCE },
+				};
+			};
+			const { lines, out } = capture();
+			assert.equal(await runAction("restore", { env, out, request }), 0);
+			assert.deepEqual(sent, ["agent.view.set", "agent.view.clear"]);
+			assert.equal(lines.log.at(-1), RESTORE_ALL_MESSAGE);
+			assert.equal(readChoice(env), "all");
+		}));
+
 	it("reports a failed restore with exit 1", () =>
 		withFakeHerdrSocket(replyError("boom", "no"), async (path) => {
 			const result = await run("restore", path);

@@ -263,7 +263,13 @@ async function restoreView(ctx) {
 		ctx.out.log(RESTORE_ALL_MESSAGE);
 		return 0;
 	}
-	return applyFocus(ctx, "Focus restore", RESTORE_FOCUS_MESSAGE);
+	const code = await applyFocus(ctx, "Focus restore", RESTORE_FOCUS_MESSAGE);
+	if (code !== 0 || readChoice(ctx.env) !== "all") return code;
+	// All ran while this Focus was in flight. All saves before it clears, so
+	// rereading here undoes a Focus that landed after All's clear.
+	await ctx.request(ctx.socketPath, "agent.view.clear", ALL_PARAMS);
+	ctx.out.log(RESTORE_ALL_MESSAGE);
+	return 0;
 }
 
 // `save` is the choice an action records; restore only reads it.
