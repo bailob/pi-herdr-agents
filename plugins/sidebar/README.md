@@ -19,7 +19,7 @@ The plugin adds two actions and two hooks. The extension in the main package mar
 
 ## Requirements
 
-- Herdr `0.9.0` or later. `0.9.0` is the first release with `agent.view.set` and `agent.view.clear`, the only Herdr methods the actions call, so the manifest declares `min_herdr_version = "0.9.0"`. The plugin was tested on `0.9.1` and `0.9.2-preview.2026-09-29-8e78f929d8f0`; other builds are untested. A build without the agent view API makes Focus and All fail with Herdr's error.
+- Herdr `0.9.0` or later. `0.9.0` is the first release with `agent.view.set` and `agent.view.clear`, the only Herdr methods the actions call, so the manifest declares `min_herdr_version = "0.9.0"`. The plugin was tested on `0.9.1`, `0.9.2-preview.2026-09-29-8e78f929d8f0`, and `0.9.5`; other builds are untested. A build without the agent view API makes Focus and All fail with Herdr's error.
 - Linux or macOS. The manifest declares `linux` and `macos`. Windows is untested and not declared.
 - `node` on the `PATH` of the Herdr server. Herdr runs `node sidebar.mjs focus`, `all`, and `restore`.
 - A `pi-herdr-agents` extension release newer than `3.3.1`. Without markers, Focus hides nothing. See the compatibility note above for older releases.
@@ -181,8 +181,11 @@ for that pane within the last 15 seconds. It does not prove that the same
 session occupies the pane when Herdr draws the row.
 
 Herdr's Pi integration reports each Pi's session file for its pane. Herdr
-drops that session when Pi releases the pane, exits, or is suspended back to
-the shell prompt, and replaces it when another agent reports its own session.
+drops that session when Pi releases the pane or exits, and replaces it when
+another agent reports its own session. With Herdr 0.9.4 or later, a Pi
+suspended with Ctrl-Z keeps its session, also after it resumes with `fg`,
+until it exits. Herdr 0.9.3 and earlier drop it at suspend.
+
 The parent Pi session writes the marker once Herdr reports the session file
 the parent assigned to the child, waiting up to 15 seconds after launch. It
 renews the marker every 4 to 5 seconds, and only after Herdr still reports
@@ -208,10 +211,15 @@ Some leftover markers still occur:
   time-to-live ends, up to 15 seconds after the last write Herdr applied.
 - A renewal that Herdr processes late starts a new 15-second period, unless a
   clear with a higher sequence number has already arrived.
-- After the child exits or is suspended, the marker stays until the parent's
-  next renewal clears it, usually within 5 seconds. A new agent started in
-  the same pane during that window stays hidden by Focus until the clear
-  arrives or the marker expires.
+- After the child exits, the marker stays until the parent's next renewal
+  clears it, usually within 5 seconds. A new agent started in the same pane
+  during that window stays hidden by Focus until the clear arrives or the
+  marker expires.
+- With Herdr 0.9.4 or later, a suspended child stays marked, also after it
+  resumes with `fg`, until it exits. A non-Pi program started at that pane's
+  shell meanwhile can stay hidden by Focus until the suspended child exits.
+  Herdr 0.9.3 and earlier clear the marker within about 5 seconds of
+  suspending.
 - If the parent restarts while the same Herdr server keeps running, and the
   system clock has moved backwards, the new parent's sequence numbers can fall
   behind the last ones Herdr applied. Herdr then ignores its writes until the
@@ -224,13 +232,18 @@ Agents view shows. They are not a security boundary.
 ### Reusing a delegated pane
 
 The marker follows the pane, but renewal follows the child's Pi session.
-When the child exits, or you suspend it with Ctrl-Z and the pane returns to
-its shell prompt, Herdr drops the child's session, and the parent clears the
-marker at its next renewal. An agent you then start in that pane is shown
+When the child exits, Herdr drops the child's session, and the parent clears
+the marker at its next renewal. An agent you then start in that pane is shown
 once the clear arrives, usually within 5 seconds, and at most 15 seconds
 after the last write Herdr accepted if the clear is lost. A cleared marker
-never returns, so a suspended child that you resume with `fg` stays visible
-under Focus.
+never returns.
+
+With Herdr 0.9.4 or later, a child you suspend with Ctrl-Z keeps its session,
+so its marker stays live, also after it resumes with `fg`, until it exits. A
+non-Pi program you start at that pane's shell in the meantime can stay hidden
+by Focus until the suspended child exits; run All to see it. Herdr 0.9.3 and
+earlier drop the session at suspend, so the marker clears within about 5
+seconds.
 
 ## Limits
 
